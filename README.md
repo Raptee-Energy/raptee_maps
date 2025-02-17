@@ -1,6 +1,7 @@
 # navtesttwo
 
-A new Flutter project.
+A flutter project to build the navigation and map feature for RAPTEE MAPS for the VCU dashboard app. 
+This is started as a mobile-app project for easier testing purposes and later it will be changed to a Linux compatible private package. 
 
 ## Getting Started
 
@@ -14,3 +15,6 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+--- 
+© Raptee Energy Pvt. Ltd. All rights reserved. 
