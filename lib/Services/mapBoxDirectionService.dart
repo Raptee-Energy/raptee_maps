@@ -3,11 +3,11 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 class MapBoxDirectionsService {
-
   MapBoxDirectionsService();
-
-  Future<List<Map<String, dynamic>>> getDirections(LatLng start, LatLng end) async {
-    final String url = 'https://raptee-navigation-dot-raptee-engine.el.r.appspot.com/maps/getRoute?points=${start.longitude},${start.latitude};${end.longitude},${end.latitude}';
+  Future<List<Map<String, dynamic>>> getDirections(
+      LatLng start, LatLng end) async {
+    final String url =
+        'https://raptee-navigation-dot-raptee-engine.el.r.appspot.com/maps/getRoute?points=${start.longitude},${start.latitude};${end.longitude},${end.latitude}';
     print("$url");
     final response = await http.get(Uri.parse(url));
 
@@ -19,7 +19,8 @@ class MapBoxDirectionsService {
 
       return (data['data']['routes'] as List).map((route) {
         final coordinates = route['geometry']['coordinates'] as List;
-        final polylinePoints = coordinates.map((coord) => LatLng(coord[1], coord[0])).toList();
+        final polylinePoints =
+            coordinates.map((coord) => LatLng(coord[1], coord[0])).toList();
         return {
           'points': polylinePoints,
           'distance': route['distance'],
