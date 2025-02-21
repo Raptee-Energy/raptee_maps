@@ -1,0 +1,10 @@
+icons_launcher:
+  image_path: "assets/rapteemaps.png"
+  platforms:
+    android:
+      enable: true
+      image_path: "assets/rm.png"
+      adaptive_foreground_image: "assets/rapteemaps.png"
+      adaptive_background_color: '#191919'
+    ios:
+      enable: true

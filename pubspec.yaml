@@ -43,6 +43,8 @@ dependencies:
 
   dio: ^5.5.0+1
   geocoding: ^3.0.0
+  rename_app: ^1.6.2
+  icons_launcher: ^3.0.0
 
 
 dev_dependencies:
