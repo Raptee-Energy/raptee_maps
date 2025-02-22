@@ -1,3 +1,4 @@
+// mapScreen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -12,6 +13,7 @@ import '../Components/zoomControls.dart';
 import '../Constants/styles.dart';
 import '../Controller/mapController.dart';
 import '../Controller/navigationController.dart';
+import '../Methods/versionDisplay.dart';
 import '../Services/googlePlacesService.dart';
 import '../Services/locationService.dart';
 import '../Services/mapBoxDirectionService.dart';
@@ -139,7 +141,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     setState(() {
       _isLoadingLocation = false;
       if (_currentLocation != null) {
-        _markerManager.updateCurrentLocationMarker(_currentLocation!);
+        _markerManager.updateCurrentLocationMarker(_currentLocation!, _navigationController.isNavigationActive);
         _onPanToCurrentLocation();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -173,7 +175,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     setState(() {
       _markerManager.removeBlueMarkers();
-      _markerManager.removeRedMarkers();
       _markerManager.addBlueMarker(selectedLocation);
       _searchController.clear();
       _suggestions = [];
@@ -245,13 +246,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void _startNavigation() {
     setState(() {
       _isRouteSelected = true;
-      _markerManager.removeRedMarkers();
-      _markerManager
-          .removeRedMarkers(); // removing twice is redundant, kept for original logic.
-      _routeDataManager.isRouteSelected =
-          true; //update RouteDataManager's state
+      _routeDataManager.isRouteSelected = true;
     });
     _navigationController.startNavigation();
+    setState(() {
+      _markerManager.removeRedMarkers();
+      _markerManager.removeBlueMarkers();
+
+    });
   }
 
   void _stopNavigation() {
@@ -267,9 +269,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return Scaffold(
       appBar: AppBar(
           title: Text(
-        "Raptee Maps",
-        style: Style.conigenColorChangableRegularText(color: Colors.black),
-      )),
+            "Raptee Maps",
+            style: Style.conigenColorChangableRegularText(color: Colors.black),
+          )),
       body: Stack(
         children: [
           MapWidget(
@@ -288,27 +290,27 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
             ],
             tappablePolylineLayer: (!_navigationController.isNavigationActive &&
-                    _allRoutes.isNotEmpty)
+                _allRoutes.isNotEmpty)
                 ? TappablePolylineLayer(
-                    polylines: _allRoutes.asMap().entries.map((entry) {
-                      int index = entry.key;
-                      List<LatLng> route = entry.value;
-                      return TaggedPolyline(
-                        points: route,
-                        strokeWidth: 4.0,
-                        color: index == _routeDataManager.selectedRouteIndex
-                            ? Colors.blue
-                            : Colors.grey,
-                        tag: 'route_$index',
-                      );
-                    }).toList(),
-                    onTap: (String tag) {
-                      if (!_navigationController.isNavigationActive) {
-                        int tappedIndex = int.parse(tag.split('_')[1]);
-                        _selectRoute(tappedIndex);
-                      }
-                    },
-                  )
+              polylines: _allRoutes.asMap().entries.map((entry) {
+                int index = entry.key;
+                List<LatLng> route = entry.value;
+                return TaggedPolyline(
+                  points: route,
+                  strokeWidth: 4.0,
+                  color: index == _routeDataManager.selectedRouteIndex
+                      ? Colors.blue
+                      : Colors.grey,
+                  tag: 'route_$index',
+                );
+              }).toList(),
+              onTap: (String tag) {
+                if (!_navigationController.isNavigationActive) {
+                  int tappedIndex = int.parse(tag.split('_')[1]);
+                  _selectRoute(tappedIndex);
+                }
+              },
+            )
                 : null,
           ),
           if (_isLoadingLocation)
@@ -356,6 +358,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 turnDistance: _turnDistance,
               ),
             ),
+          const Positioned(bottom: 8, left: 8, child: VersionDisplay()),
         ],
       ),
       floatingActionButton: Column(

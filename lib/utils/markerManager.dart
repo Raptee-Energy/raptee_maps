@@ -1,3 +1,4 @@
+// markerManager.dart
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -10,10 +11,11 @@ class MarkerManager {
 
   MarkerManager({required this.markers, required this.setState});
 
-  void updateCurrentLocationMarker(LatLng location) {
+  void updateCurrentLocationMarker(LatLng location, bool isNavigationActive) {
+    if (isNavigationActive) return;
     setState(() {
       markers.removeWhere((marker) =>
-      marker.child is Icon && (marker.child as Icon).color == Colors.red);
+          marker.child is Icon && (marker.child as Icon).color == Colors.red);
       markers.add(
         Marker(
           width: 80.0,
@@ -32,21 +34,21 @@ class MarkerManager {
   void removeBlueMarkers() {
     setState(() {
       markers.removeWhere((marker) =>
-      marker.child is Icon && (marker.child as Icon).color == Colors.blue);
+          marker.child is Icon && (marker.child as Icon).color == Colors.blue);
     });
   }
 
   void removeRedMarkers() {
     setState(() {
       markers.removeWhere((marker) =>
-      marker.child is Icon && (marker.child as Icon).color == Colors.red);
+          marker.child is Icon && (marker.child as Icon).color == Colors.red);
     });
   }
 
   void removeGreenMarkers() {
     setState(() {
       markers.removeWhere((marker) =>
-      marker.child is Icon && (marker.child as Icon).color == Colors.green);
+          marker.child is Icon && (marker.child as Icon).color == Colors.green);
     });
   }
 
