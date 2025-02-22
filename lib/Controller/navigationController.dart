@@ -14,7 +14,7 @@ class NavigationController {
   StreamSubscription<Position>? positionStreamSubscription;
   late Function(List<LatLng>) updatePolylinePoints;
   late Function(LatLng, double?) updateCurrentLocation;
-  late Function(String, String) updateTurnInstructions;
+  late Function(String, String, String) updateTurnInstructions;
   late Function(List<LatLng>) updateCoveredPolyline;
   late Function() clearNavigation;
   final MapBoxDirectionsService directionsService;
@@ -23,8 +23,8 @@ class NavigationController {
   VoidCallback? onNavigationStart;
   VoidCallback? onNavigationStop;
   bool _isRerouting = false;
-  double deviationThreshold =
-  30.0;
+  double deviationThreshold = 30.0;
+  double instructionDistanceThreshold = 100.0;
 
   NavigationController({
     required this.allRoutes,
@@ -74,7 +74,6 @@ class NavigationController {
 
       if (isDeviationTooFar(rawPosition)) {
         if (!_isRerouting) {
-          // Prevent immediate re-rerouting if already rerouting
           reroute();
         }
       } else {
@@ -147,7 +146,7 @@ class NavigationController {
     if (_isRerouting) return;
 
     _isRerouting = true;
-    updateTurnInstructions('Rerouting...', 'assets/rerouting.png');
+    updateTurnInstructions('Rerouting...', 'assets/rerouting.png', '');
 
     LatLng destination = allRoutes[selectedRouteIndex].last;
     try {
@@ -164,12 +163,12 @@ class NavigationController {
         updateTurnInstruction();
       } else {
         updateTurnInstructions(
-            'Rerouting failed: No route found', 'assets/error.png');
+            'Rerouting failed: No route found', 'assets/error.png', '');
       }
       _isRerouting = false;
     } catch (e) {
       _isRerouting = false;
-      updateTurnInstructions('Error rerouting', 'assets/error.png');
+      updateTurnInstructions('Error rerouting', 'assets/error.png', '');
       print('Rerouting error: $e');
     }
   }
@@ -228,10 +227,6 @@ class NavigationController {
 
     LatLng currentSegmentStart = route[segmentIndex];
     LatLng currentSegmentEnd = route[segmentIndex + 1];
-    double bearing = getBearing(currentSegmentStart, currentSegmentEnd);
-    String instruction;
-    String icon;
-
     double distanceToNextPoint = Geolocator.distanceBetween(
       currentPosition.latitude,
       currentPosition.longitude,
@@ -239,35 +234,48 @@ class NavigationController {
       currentSegmentEnd.longitude,
     );
 
-    if (segmentIndex > 0) {
-      LatLng lastSegmentEnd = route[segmentIndex - 1];
-      double lastBearing = getBearing(lastSegmentEnd, currentSegmentStart);
-      double angleDiff = bearing - lastBearing;
+    if (segmentIndex == 0) {
+      return {
+        'instruction': 'Start Navigation',
+        'icon': 'assets/goStraight.png',
+        'distance': '${distanceToNextPoint.toStringAsFixed(0)}m'
+      };
+    }
 
-      if (angleDiff > 30) {
-        instruction = "Turn right";
-        icon = 'assets/turnRight.png';
-      } else if (angleDiff < -30) {
-        instruction = "Turn left";
-        icon = 'assets/turnLeft.png';
-      } else {
-        instruction = "Go straight";
-        icon = 'assets/goStraight.png';
-      }
+    LatLng lastSegmentStart = route[segmentIndex - 1];
+    double lastSegmentBearing = getBearing(lastSegmentStart, currentSegmentStart);
+    double currentSegmentBearing = getBearing(currentSegmentStart, currentSegmentEnd);
+    double angleDiff = currentSegmentBearing - lastSegmentBearing;
+    angleDiff = ((angleDiff + 180) % 360) - 180;
+
+    String instruction;
+    String icon;
+
+    if (angleDiff > 25) {
+      instruction = "Turn right";
+      icon = 'assets/turnRight.png';
+    } else if (angleDiff < -25) {
+      instruction = "Turn left";
+      icon = 'assets/turnLeft.png';
     } else {
-      instruction = "Start Navigation";
+      instruction = "Go straight";
       icon = 'assets/goStraight.png';
+    }
+
+    String distanceText = '';
+    if (distanceToNextPoint <= instructionDistanceThreshold) {
+      distanceText = '${distanceToNextPoint.toStringAsFixed(0)}m';
     }
 
     return {
       'instruction': instruction,
       'icon': icon,
-      'distance':
-      '${distanceToNextPoint.toStringAsFixed(0)}m'
+      'distance': distanceText,
     };
   }
 
-  void updateTurnInstruction() { // Corrected method name
+
+  void updateTurnInstruction() {
     if (allRoutes.isNotEmpty && isNavigationActive) {
       List<LatLng> currentRoute = allRoutes[selectedRouteIndex];
       if (currentSegmentIndex < currentRoute.length) {
@@ -276,7 +284,7 @@ class NavigationController {
           currentSegmentIndex,
         );
         updateTurnInstructions(
-            turnInstruction['instruction']!, turnInstruction['icon']!);
+            turnInstruction['instruction']!, turnInstruction['icon']!, turnInstruction['distance']!);
       }
     }
   }

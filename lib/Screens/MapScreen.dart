@@ -1,4 +1,3 @@
-// mapScreen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -102,7 +101,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       ..updatePolylinePoints = _updatePolylinePoints
       ..updateCurrentLocation = _updateCurrentLocation
       ..clearNavigation = _clearNavigation
-      ..updateTurnInstructions = _updateTurnInstructions
+      ..updateTurnInstructions =
+          _updateTurnInstructions // No change needed here as signature is already updated in controller
       ..updateCoveredPolyline = _updateCoveredPolyline
       ..onNavigationStart = _onNavigationStart
       ..onNavigationStop = _onNavigationStop;
@@ -141,7 +141,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     setState(() {
       _isLoadingLocation = false;
       if (_currentLocation != null) {
-        _markerManager.updateCurrentLocationMarker(_currentLocation!, _navigationController.isNavigationActive);
+        _markerManager.updateCurrentLocationMarker(
+            _currentLocation!, _navigationController.isNavigationActive);
         _onPanToCurrentLocation();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -232,14 +233,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _routeDataManager.selectRoute(index);
   }
 
-  void _updateTurnInstructions(String instruction, String icon) {
-    Map<String, String> turnDetails = _navigationController.getTurnInstruction(
-        _allRoutes[_routeDataManager.selectedRouteIndex],
-        _navigationController.currentSegmentIndex);
+  void _updateTurnInstructions(
+      String instruction, String icon, String distance) {
     setState(() {
-      _turnInstruction = turnDetails['instruction'] ?? '';
-      _turnIcon = turnDetails['icon'] ?? '';
-      _turnDistance = turnDetails['distance'] ?? '';
+      _turnInstruction = instruction;
+      _turnIcon = icon;
+      _turnDistance = distance;
     });
   }
 
@@ -252,7 +251,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     setState(() {
       _markerManager.removeRedMarkers();
       _markerManager.removeBlueMarkers();
-
     });
   }
 
@@ -269,9 +267,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return Scaffold(
       appBar: AppBar(
           title: Text(
-            "Raptee Maps",
-            style: Style.conigenColorChangableRegularText(color: Colors.black),
-          )),
+        "Raptee Maps",
+        style: Style.conigenColorChangableRegularText(color: Colors.black),
+      )),
       body: Stack(
         children: [
           MapWidget(
@@ -290,27 +288,27 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
             ],
             tappablePolylineLayer: (!_navigationController.isNavigationActive &&
-                _allRoutes.isNotEmpty)
+                    _allRoutes.isNotEmpty)
                 ? TappablePolylineLayer(
-              polylines: _allRoutes.asMap().entries.map((entry) {
-                int index = entry.key;
-                List<LatLng> route = entry.value;
-                return TaggedPolyline(
-                  points: route,
-                  strokeWidth: 4.0,
-                  color: index == _routeDataManager.selectedRouteIndex
-                      ? Colors.blue
-                      : Colors.grey,
-                  tag: 'route_$index',
-                );
-              }).toList(),
-              onTap: (String tag) {
-                if (!_navigationController.isNavigationActive) {
-                  int tappedIndex = int.parse(tag.split('_')[1]);
-                  _selectRoute(tappedIndex);
-                }
-              },
-            )
+                    polylines: _allRoutes.asMap().entries.map((entry) {
+                      int index = entry.key;
+                      List<LatLng> route = entry.value;
+                      return TaggedPolyline(
+                        points: route,
+                        strokeWidth: 4.0,
+                        color: index == _routeDataManager.selectedRouteIndex
+                            ? Colors.blue
+                            : Colors.grey,
+                        tag: 'route_$index',
+                      );
+                    }).toList(),
+                    onTap: (String tag) {
+                      if (!_navigationController.isNavigationActive) {
+                        int tappedIndex = int.parse(tag.split('_')[1]);
+                        _selectRoute(tappedIndex);
+                      }
+                    },
+                  )
                 : null,
           ),
           if (_isLoadingLocation)
