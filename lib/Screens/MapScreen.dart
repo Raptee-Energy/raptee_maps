@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import '../Components/searchWidget.dart';
+import '../Controller/mapController.dart';
 import '../Controller/navigationController.dart';
 import '../Methods/minutesToHours.dart';
 import '../Package/tappablePolyline.dart';
@@ -24,8 +25,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final List<List<LatLng>> _allRoutes = [];
   final List<Map<String, dynamic>> _routeDetails = [];
   final TextEditingController _searchController = TextEditingController();
-  final GooglePlacesService _placesService;
-  final MapBoxDirectionsService _directionsService;
+  final GooglePlacesService _placesService = GooglePlacesService();
+  final MapBoxDirectionsService _directionsService = MapBoxDirectionsService();
   LatLng? _currentLocation;
   List<dynamic> _suggestions = [];
   bool _isRouteSelected = false;
@@ -33,16 +34,29 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   bool _isLoadingLocation = true;
 
   late NavigationController _navigationController;
+  late MapAnimationController _mapAnimationController;
 
   late List<LatLng> _coveredRoutePoints = [];
   final List<LatLng> _plannedRoutePoints = [];
+  List<LatLng> _remainingRoutePoints = [];
 
   String _turnInstruction = '';
   String _turnIcon = '';
+  String _turnDistance = '';
 
-  _MapScreenState()
-      : _placesService = GooglePlacesService(),
-        _directionsService = MapBoxDirectionsService() {
+  @override
+  void initState() {
+    super.initState();
+    _getCurrentLocation();
+    _requestLocationPermission();
+    _initializeNavigationController();
+    _initializeMapAnimationController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onPanToCurrentLocation();
+    });
+  }
+
+  void _initializeNavigationController() {
     _navigationController = NavigationController(
       allRoutes: _allRoutes,
       directionsService: _directionsService,
@@ -51,14 +65,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       ..updateCurrentLocation = _updateCurrentLocation
       ..clearNavigation = _clearNavigation
       ..updateTurnInstructions = _updateTurnInstructions
-      ..updateCoveredPolyline = _updateCoveredPolyline;
+      ..updateCoveredPolyline = _updateCoveredPolyline
+      ..onNavigationStart = _onNavigationStart
+      ..onNavigationStop = _onNavigationStop;
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _getCurrentLocation();
-    _requestLocationPermission();
+  void _initializeMapAnimationController() {
+    _mapAnimationController = MapAnimationController(
+      mapController: _mapController,
+      tickerProvider: this,
+    );
+  }
+
+  void _onNavigationStart() {
+    _mapAnimationController.startContinuousPan();
+  }
+
+  void _onNavigationStop() {
+    _mapAnimationController.stopContinuousPan();
   }
 
   Future<void> _requestLocationPermission() async {
@@ -96,6 +120,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
       setState(() {
         _currentLocation = LatLng(position.latitude, position.longitude);
+        _markers.removeWhere((marker) =>
+            marker.child is Icon && (marker.child as Icon).color == Colors.red);
         _markers.add(
           Marker(
             width: 80.0,
@@ -108,7 +134,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
           ),
         );
-        _mapController.move(_currentLocation!, 15.0);
+        _mapAnimationController.updateMapCenter(_currentLocation!, 15.0,
+            animated: true);
         _isLoadingLocation = false;
       });
     } catch (e) {
@@ -143,6 +170,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final midPoint = LatLng(avgLat, avgLng);
 
     setState(() {
+      _markers.removeWhere((marker) =>
+          marker.child is Icon && (marker.child as Icon).color == Colors.blue);
       _markers.add(
         Marker(
           width: 80.0,
@@ -183,7 +212,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       zoomLevel = 7;
     }
 
-    _mapController.move(midPoint, zoomLevel);
+    _mapAnimationController.updateMapCenter(midPoint, zoomLevel,
+        animated: true);
 
     await _getDirections(_currentLocation!, selectedLocation);
   }
@@ -194,6 +224,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _allRoutes.clear();
       _routeDetails.clear();
       _plannedRoutePoints.clear();
+      _remainingRoutePoints.clear();
       for (var route in directions) {
         final points = route['points'];
         final distance = route['distance'];
@@ -205,6 +236,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         });
       }
       _plannedRoutePoints.addAll(_allRoutes[0]);
+      _remainingRoutePoints.addAll(_allRoutes[0]);
       _selectRoute(0);
       setState(() {
         _isRouteSelected = true;
@@ -218,30 +250,34 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     setState(() {
       _polylinePoints.clear();
       _polylinePoints.addAll(polylinePoints);
+      _remainingRoutePoints.clear();
+      _remainingRoutePoints.addAll(polylinePoints);
     });
   }
 
-  void _updateCurrentLocation(LatLng location) {
+  void _updateCurrentLocation(LatLng location, double? bearing) {
     setState(() {
-      _markers.removeWhere((marker) => marker.point == _currentLocation);
+      _markers.removeWhere((marker) =>
+          marker.child is Icon && (marker.child as Icon).color == Colors.green);
       _currentLocation = location;
       _markers.add(
         Marker(
           width: 80.0,
           height: 80.0,
           point: location,
-          child: Container(
-            child: const Icon(
-              Icons.navigation,
-              color: Colors.green,
-              size: 40.0,
-            ),
+          child: const Icon(
+            Icons.navigation,
+            color: Colors.green,
+            size: 40.0,
           ),
         ),
       );
+      _mapAnimationController.updateMapCenter(location, bearing,
+          animated: true);
 
       if (_plannedRoutePoints.isNotEmpty) {
         _plannedRoutePoints[0] = _currentLocation!;
+        _remainingRoutePoints[0] = _currentLocation!;
       }
     });
   }
@@ -249,12 +285,28 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void _clearNavigation() {
     setState(() {
       _markers.clear();
+      _markers.add(
+        Marker(
+          width: 80.0,
+          height: 80.0,
+          point: _currentLocation ?? const LatLng(0, 0),
+          child: const Icon(
+            Icons.location_on,
+            color: Colors.red,
+            size: 40.0,
+          ),
+        ),
+      );
       _polylinePoints.clear();
       _coveredRoutePoints.clear();
       _plannedRoutePoints.clear();
+      _remainingRoutePoints.clear();
       _allRoutes.clear();
       _routeDetails.clear();
       _isRouteSelected = false;
+      _turnInstruction = '';
+      _turnIcon = '';
+      _turnDistance = '';
     });
   }
 
@@ -265,7 +317,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       );
       return;
     }
-    _mapController.move(_currentLocation!, 15.0);
+    _mapAnimationController.updateMapCenter(_currentLocation!, 8.0,
+        animated: true);
+    _mapAnimationController.updateZoom(8.0, animated: true);
   }
 
   void _selectRoute(int index) {
@@ -274,6 +328,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _selectedRouteIndex = index;
         _polylinePoints.clear();
         _polylinePoints.addAll(_allRoutes[index]);
+        _remainingRoutePoints.clear();
+        _remainingRoutePoints.addAll(_allRoutes[index]);
         _updatePlannedRoutePoints();
       });
     }
@@ -289,22 +345,43 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   void _updateTurnInstructions(String instruction, String icon) {
+    Map<String, String> turnDetails = _navigationController.getTurnInstruction(
+        _allRoutes[_selectedRouteIndex],
+        _navigationController.currentSegmentIndex);
     setState(() {
-      _turnInstruction = instruction;
-      _turnIcon = icon;
+      _turnInstruction = turnDetails['instruction'] ?? '';
+      _turnIcon = turnDetails['icon'] ?? '';
+      _turnDistance = turnDetails['distance'] ?? '';
     });
   }
 
   void _startNavigation() {
     setState(() {
       _isRouteSelected = true;
+      _markers.removeWhere((marker) =>
+          marker.child is Icon && (marker.child as Icon).color == Colors.blue);
     });
     _navigationController.startNavigation();
+  }
+
+  void _stopNavigation() {
+    _navigationController.stopNavigation();
   }
 
   void _updateCoveredPolyline(List<LatLng> coveredPoints) {
     setState(() {
       _coveredRoutePoints = coveredPoints;
+      if (_plannedRoutePoints.isNotEmpty && _coveredRoutePoints.isNotEmpty) {
+        int coveredPointsCount = _coveredRoutePoints.length;
+        if (coveredPointsCount <= _plannedRoutePoints.length) {
+          _remainingRoutePoints =
+              _plannedRoutePoints.sublist(coveredPointsCount - 1);
+        } else {
+          _remainingRoutePoints = [];
+        }
+      } else {
+        _remainingRoutePoints = [];
+      }
     });
   }
 
@@ -352,7 +429,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               PolylineLayer(
                 polylines: [
                   Polyline(
-                    points: _plannedRoutePoints,
+                    points: _remainingRoutePoints,
                     strokeWidth: 4.0,
                     color: Colors.blue.withOpacity(0.5),
                   ),
@@ -392,22 +469,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               right: 16.0,
               child: Container(
                 decoration: BoxDecoration(
-                  // Added BoxDecoration for rounded corners and background
                   color: Colors.white.withOpacity(0.8),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                padding: const EdgeInsets.all(12.0), // Increased padding
+                padding: const EdgeInsets.all(12.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize:
-                      MainAxisSize.min, // Use minAxisSize to wrap content
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Route ${_selectedRouteIndex + 1}', // Display route number
-                      textAlign: TextAlign.center, // Center the route number
+                      'Route ${_selectedRouteIndex + 1}',
+                      textAlign: TextAlign.center,
                       style: const TextStyle(
-                          fontSize: 18.0,
-                          fontWeight: FontWeight.bold), // Bold route number
+                          fontSize: 18.0, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8.0),
                     Text(
@@ -436,21 +510,39 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             Positioned(
               top: 16.0,
               right: 16.0,
+              left: 16.0,
               child: Container(
-                color: Colors.white,
-                padding: const EdgeInsets.all(8.0),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.all(12.0),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     if (_turnIcon.isNotEmpty)
                       Image.asset(
                         '$_turnIcon',
-                        width: 32.0,
-                        height: 32.0,
+                        width: 40.0,
+                        height: 40.0,
                       ),
-                    const SizedBox(width: 8.0),
-                    Text(
-                      _turnInstruction,
-                      style: const TextStyle(fontSize: 16.0),
+                    const SizedBox(width: 12.0),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _turnInstruction,
+                            style: const TextStyle(
+                                fontSize: 18.0, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            _turnDistance.isNotEmpty ? 'in $_turnDistance' : '',
+                            style: const TextStyle(
+                                fontSize: 16.0, color: Colors.grey),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -463,15 +555,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         children: [
           FloatingActionButton(
             heroTag: 'zoom_in',
-            onPressed: () => _mapController.move(
-                _mapController.camera.center, _mapController.camera.zoom + 1),
+            onPressed: () => _mapAnimationController.updateZoom(
+                _mapController.camera.zoom + 1,
+                animated: true), // Animated zoom
             child: const Icon(Icons.zoom_in),
           ),
           const SizedBox(height: 10),
           FloatingActionButton(
             heroTag: 'zoom_out',
-            onPressed: () => _mapController.move(
-                _mapController.camera.center, _mapController.camera.zoom - 1),
+            onPressed: () => _mapAnimationController.updateZoom(
+                _mapController.camera.zoom - 1,
+                animated: true), // Animated zoom
             child: const Icon(Icons.zoom_out),
           ),
           const SizedBox(height: 10),
@@ -494,7 +588,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             heroTag: 'navigation',
             onPressed: _allRoutes.isNotEmpty
                 ? _navigationController.isNavigationActive
-                    ? _navigationController.stopNavigation
+                    ? _stopNavigation
                     : _startNavigation
                 : null,
             child: Icon(

@@ -1,45 +1,61 @@
 import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import '../Services/mapBoxDirectionService.dart';
 import 'dart:math' as Math;
 
+import '../Services/mapBoxDirectionService.dart';
+
 class NavigationController {
-  final List<List<LatLng>> allRoutes;
+  List<List<LatLng>> allRoutes; // Removed final
   int selectedRouteIndex = 0;
   bool isNavigationActive = false;
   StreamSubscription<Position>? positionStreamSubscription;
   late Function(List<LatLng>) updatePolylinePoints;
-  late Function(LatLng) updateCurrentLocation;
+  late Function(LatLng, double?) updateCurrentLocation;
   late Function(String, String) updateTurnInstructions;
   late Function(List<LatLng>) updateCoveredPolyline;
   late Function() clearNavigation;
   final MapBoxDirectionsService directionsService;
   LatLng currentPosition = const LatLng(0, 0);
   int currentSegmentIndex = 0;
+  VoidCallback? onNavigationStart;
+  VoidCallback? onNavigationStop;
+  bool _isRerouting = false;
+  double deviationThreshold =
+  30.0;
 
   NavigationController({
     required this.allRoutes,
     required this.directionsService,
+    this.onNavigationStart,
+    this.onNavigationStop,
   });
 
   void startNavigation() {
     isNavigationActive = true;
     updateNavigationRoute();
     startLocationUpdates();
+    if (onNavigationStart != null) {
+      onNavigationStart!();
+    }
   }
 
   void stopNavigation() {
     isNavigationActive = false;
     positionStreamSubscription?.cancel();
     clearNavigation();
+    if (onNavigationStop != null) {
+      onNavigationStop!();
+    }
   }
 
   void startLocationUpdates() {
     positionStreamSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 1,
+        distanceFilter: 3,
       ),
     ).listen((Position position) {
       LatLng rawPosition = LatLng(position.latitude, position.longitude);
@@ -47,13 +63,21 @@ class NavigationController {
       LatLng projectedPosition = projectOnRoute(rawPosition, currentRoute);
 
       currentPosition = projectedPosition;
-      updateCurrentLocation(currentPosition);
+      double bearingToNextPoint = 0.0;
+      if (currentRoute.isNotEmpty &&
+          currentSegmentIndex < currentRoute.length - 1) {
+        bearingToNextPoint =
+            getBearing(currentPosition, currentRoute[currentSegmentIndex + 1]);
+      }
+      updateCurrentLocation(currentPosition, bearingToNextPoint);
       updateCoveredRoute(currentPosition);
 
       if (isDeviationTooFar(rawPosition)) {
-        reroute();
+        if (!_isRerouting) {
+          // Prevent immediate re-rerouting if already rerouting
+          reroute();
+        }
       } else {
-        updateNavigationRoute();
         updateTurnInstruction();
       }
     });
@@ -81,7 +105,6 @@ class NavigationController {
         closestSegmentIndex = i;
       }
     }
-
     currentSegmentIndex = closestSegmentIndex;
     return closestPoint;
   }
@@ -89,20 +112,27 @@ class NavigationController {
   LatLng projectPointOnLineSegment(LatLng p, LatLng start, LatLng end) {
     double dx = end.longitude - start.longitude;
     double dy = end.latitude - start.latitude;
-    double t = ((p.longitude - start.longitude) * dx + (p.latitude - start.latitude) * dy) / (dx * dx + dy * dy);
+    double t = ((p.longitude - start.longitude) * dx +
+        (p.latitude - start.latitude) * dy) /
+        (dx * dx + dy * dy);
     t = t.clamp(0.0, 1.0);
     return LatLng(start.latitude + t * dy, start.longitude + t * dx);
   }
 
   void updateCoveredRoute(LatLng newPoint) {
     List<LatLng> currentRoute = allRoutes[selectedRouteIndex];
-    List<LatLng> coveredPart = currentRoute.sublist(0, currentSegmentIndex + 1);
+    if (currentRoute.isEmpty) return;
+
+    List<LatLng> coveredPart = currentRoute.sublist(
+        0, Math.min(currentSegmentIndex + 1, currentRoute.length));
     coveredPart.add(newPoint);
     updateCoveredPolyline(coveredPart);
   }
 
   bool isDeviationTooFar(LatLng rawPosition) {
     List<LatLng> currentRoute = allRoutes[selectedRouteIndex];
+    if (currentRoute.isEmpty) return false;
+
     LatLng closestPoint = projectOnRoute(rawPosition, currentRoute);
     double distance = Geolocator.distanceBetween(
       rawPosition.latitude,
@@ -110,23 +140,37 @@ class NavigationController {
       closestPoint.latitude,
       closestPoint.longitude,
     );
-    return distance > 50.0; // 50 meters threshold, adjust as needed
+    return distance > deviationThreshold;
   }
 
   Future<void> reroute() async {
+    if (_isRerouting) return;
+
+    _isRerouting = true;
+    updateTurnInstructions('Rerouting...', 'assets/rerouting.png');
+
     LatLng destination = allRoutes[selectedRouteIndex].last;
     try {
-      final directions = await directionsService.getDirections(currentPosition, destination);
-      allRoutes.clear();
-      for (var route in directions) {
-        allRoutes.add(route['points']);
+      final directions =
+      await directionsService.getDirections(currentPosition, destination);
+      if (directions.isNotEmpty) {
+        allRoutes.clear();
+        for (var route in directions) {
+          allRoutes.add(route['points']);
+        }
+        selectedRouteIndex = 0;
+        currentSegmentIndex = 0;
+        updateNavigationRoute();
+        updateTurnInstruction();
+      } else {
+        updateTurnInstructions(
+            'Rerouting failed: No route found', 'assets/error.png');
       }
-      selectedRouteIndex = 0;
-      currentSegmentIndex = 0;
-      updateNavigationRoute();
-      updateTurnInstruction();
+      _isRerouting = false;
     } catch (e) {
-      print(e);
+      _isRerouting = false;
+      updateTurnInstructions('Error rerouting', 'assets/error.png');
+      print('Rerouting error: $e');
     }
   }
 
@@ -150,48 +194,86 @@ class NavigationController {
     return (initialBearing + 360.0) % 360.0;
   }
 
-  Map<String, String> getTurnInstruction(LatLng current, LatLng next) {
-    double bearing = getBearing(current, next);
-    String instruction;
+  Map<String, String> getTurnInstruction(List<LatLng> route, int segmentIndex) {
+    if (_isRerouting) {
+      return {
+        'instruction': 'Rerouting...',
+        'icon': 'assets/rerouting.png',
+        'distance': ''
+      };
+    }
 
-    if (bearing >= -45 && bearing < 45) {
-      instruction = "Go straight";
-    } else if (bearing >= 45 && bearing < 135) {
-      instruction = "Turn right";
-    } else if (bearing >= -135 && bearing < -45) {
-      instruction = "Turn left";
+    if (segmentIndex >= route.length - 1) {
+      LatLng destination = route.last;
+      double distanceToDestination = Geolocator.distanceBetween(
+        currentPosition.latitude,
+        currentPosition.longitude,
+        destination.latitude,
+        destination.longitude,
+      );
+      if (distanceToDestination <= 20.0) {
+        return {
+          'instruction': 'Destination Reached',
+          'icon': 'assets/destination.png',
+          'distance': 'Arrived'
+        };
+      } else {
+        return {
+          'instruction': 'Continue to Destination',
+          'icon': 'assets/goStraight.png',
+          'distance': '${distanceToDestination.toStringAsFixed(0)}m'
+        };
+      }
+    }
+
+    LatLng currentSegmentStart = route[segmentIndex];
+    LatLng currentSegmentEnd = route[segmentIndex + 1];
+    double bearing = getBearing(currentSegmentStart, currentSegmentEnd);
+    String instruction;
+    String icon;
+
+    double distanceToNextPoint = Geolocator.distanceBetween(
+      currentPosition.latitude,
+      currentPosition.longitude,
+      currentSegmentEnd.latitude,
+      currentSegmentEnd.longitude,
+    );
+
+    if (segmentIndex > 0) {
+      LatLng lastSegmentEnd = route[segmentIndex - 1];
+      double lastBearing = getBearing(lastSegmentEnd, currentSegmentStart);
+      double angleDiff = bearing - lastBearing;
+
+      if (angleDiff > 30) {
+        instruction = "Turn right";
+        icon = 'assets/turnRight.png';
+      } else if (angleDiff < -30) {
+        instruction = "Turn left";
+        icon = 'assets/turnLeft.png';
+      } else {
+        instruction = "Go straight";
+        icon = 'assets/goStraight.png';
+      }
     } else {
-      instruction = "Turn back";
+      instruction = "Start Navigation";
+      icon = 'assets/goStraight.png';
     }
 
     return {
       'instruction': instruction,
-      'icon': getTurnIcon(instruction),
+      'icon': icon,
+      'distance':
+      '${distanceToNextPoint.toStringAsFixed(0)}m'
     };
   }
 
-  String getTurnIcon(String instruction) {
-    switch (instruction) {
-      case 'Go straight':
-        return 'assets/goStraight.png';
-      case 'Turn right':
-        return 'assets/turnRight.png';
-      case 'Turn left':
-        return 'assets/turnLeft.png';
-      case 'Turn back':
-        return 'assets/turnBack.png';
-      default:
-        return 'assets/goStraight.png';
-    }
-  }
-
-  void updateTurnInstruction() {
-    if (allRoutes.isNotEmpty) {
+  void updateTurnInstruction() { // Corrected method name
+    if (allRoutes.isNotEmpty && isNavigationActive) {
       List<LatLng> currentRoute = allRoutes[selectedRouteIndex];
-      if (currentSegmentIndex < currentRoute.length - 1) {
+      if (currentSegmentIndex < currentRoute.length) {
         Map<String, String> turnInstruction = getTurnInstruction(
-          currentRoute[currentSegmentIndex],
-          currentRoute[currentSegmentIndex + 1],
+          currentRoute,
+          currentSegmentIndex,
         );
         updateTurnInstructions(
             turnInstruction['instruction']!, turnInstruction['icon']!);
