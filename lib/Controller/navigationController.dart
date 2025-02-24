@@ -28,6 +28,11 @@ class NavigationController {
   List<_CachedInstruction> cachedInstructions = [];
   int currentInstructionIndex = 0;
 
+  Timer? _rerouteTimer;
+  DateTime? _lastRerouteTime;
+  final Duration rerouteDebounceDuration = const Duration(seconds: 5);
+  final Duration minRerouteInterval = const Duration(seconds: 15);
+
   NavigationController({
     required this.allRoutes,
     required this.directionsService,
@@ -40,6 +45,7 @@ class NavigationController {
     updateNavigationRoute();
     _generateCachedInstructions();
     startLocationUpdates();
+    _lastRerouteTime = null;
     if (onNavigationStart != null) {
       onNavigationStart!();
     }
@@ -51,6 +57,9 @@ class NavigationController {
     clearNavigation();
     cachedInstructions.clear();
     currentInstructionIndex = 0;
+    _rerouteTimer?.cancel();
+    _rerouteTimer = null;
+    _lastRerouteTime = null;
     if (onNavigationStop != null) {
       onNavigationStop!();
     }
@@ -60,6 +69,7 @@ class NavigationController {
     positionStreamSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
+        timeLimit: Duration(milliseconds: 500),
         distanceFilter: 3,
       ),
     ).listen((Position position) {
@@ -81,12 +91,42 @@ class NavigationController {
 
       if (isDeviationTooFar(rawPosition)) {
         if (!_isRerouting) {
-          reroute();
+          _debounceReroute(rawPosition);
         }
       } else {
+        _cancelRerouteDebounce();
         updateTurnInstruction();
       }
     });
+  }
+
+  void _debounceReroute(LatLng rawPosition) {
+    if (_rerouteTimer?.isActive ?? false) return;
+
+    _rerouteTimer = Timer(rerouteDebounceDuration, () {
+      _rerouteTimer = null;
+      _rerouteIfStillDeviated(rawPosition);
+    });
+  }
+
+  void _cancelRerouteDebounce() {
+    if (_rerouteTimer?.isActive ?? false) {
+      _rerouteTimer?.cancel();
+      _rerouteTimer = null;
+    }
+  }
+
+  Future<void> _rerouteIfStillDeviated(LatLng rawPosition) async {
+    if (isDeviationTooFar(rawPosition)) {
+      final now = DateTime.now();
+      if (_lastRerouteTime == null ||
+          now.difference(_lastRerouteTime!) > minRerouteInterval) {
+        await reroute();
+        _lastRerouteTime = now;
+      } else {
+        print("Rerouting suppressed due to rate limiting");
+      }
+    }
   }
 
   LatLng projectOnRoute(LatLng point, List<LatLng> route) {
