@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'dart:math' as Math;
@@ -24,7 +23,7 @@ class NavigationController {
   VoidCallback? onNavigationStop;
   bool _isRerouting = false;
   double deviationThreshold = 30.0;
-  double instructionDistanceThreshold = 100.0;
+  double instructionDistanceThreshold = 15.0;
 
   List<_CachedInstruction> cachedInstructions = [];
   int currentInstructionIndex = 0;
@@ -280,8 +279,32 @@ class NavigationController {
         icon = 'assets/goStraight.png';
       }
     } else {
-      instruction = "Start Navigation";
-      icon = 'assets/goStraight.png';
+      if (route.length > 2) {
+        LatLng nextSegmentEnd = route[segmentIndex + 2];
+        double currentSegmentBearing =
+            getBearing(currentSegmentStart, currentSegmentEnd);
+        double nextSegmentBearing =
+            getBearing(currentSegmentEnd, nextSegmentEnd);
+        double angleDiff = nextSegmentBearing - currentSegmentBearing;
+        angleDiff = ((angleDiff + 180) % 360) - 180;
+
+        if (angleDiff > 135 || angleDiff < -135) {
+          instruction = "Make U-Turn";
+          icon = 'assets/turnBack.png';
+        } else if (angleDiff > 25) {
+          instruction = "Turn right";
+          icon = 'assets/turnRight.png';
+        } else if (angleDiff < -25) {
+          instruction = "Turn left";
+          icon = 'assets/turnLeft.png';
+        } else {
+          instruction = "Go straight";
+          icon = 'assets/goStraight.png';
+        }
+      } else {
+        instruction = "Start Navigation";
+        icon = 'assets/goStraight.png';
+      }
     }
 
     return {
