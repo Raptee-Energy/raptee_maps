@@ -235,44 +235,61 @@ class NavigationController {
 
     LatLng currentSegmentStart = route[segmentIndex];
     LatLng currentSegmentEnd = route[segmentIndex + 1];
-    double distanceToNextPoint = Geolocator.distanceBetween(
-      currentPosition.latitude,
-      currentPosition.longitude,
-      currentSegmentEnd.latitude,
-      currentSegmentEnd.longitude,
-    );
 
-    if (segmentIndex == 0) {
-      return {
-        'instruction': 'Start Navigation',
-        'icon': 'assets/goStraight.png',
-        'distance': '${distanceToNextPoint.toStringAsFixed(0)}m'
-      };
-    }
+    LatLng instructionPoint = currentSegmentEnd;
+    String instruction = "Go straight";
+    String icon = 'assets/goStraight.png';
 
-    LatLng lastSegmentStart = route[segmentIndex - 1];
-    double lastSegmentBearing = getBearing(lastSegmentStart, currentSegmentStart);
-    double currentSegmentBearing = getBearing(currentSegmentStart, currentSegmentEnd);
-    double angleDiff = currentSegmentBearing - lastSegmentBearing;
-    angleDiff = ((angleDiff + 180) % 360) - 180;
+    if (segmentIndex > 0) {
+      LatLng lastSegmentStart = route[segmentIndex - 1];
+      double lastSegmentBearing = getBearing(lastSegmentStart, currentSegmentStart);
+      double currentSegmentBearing = getBearing(currentSegmentStart, currentSegmentEnd);
+      double angleDiff = currentSegmentBearing - lastSegmentBearing;
+      angleDiff = ((angleDiff + 180) % 360) - 180;
 
-    String instruction;
-    String icon;
-
-    if (angleDiff > 25) {
-      instruction = "Turn right";
-      icon = 'assets/turnRight.png';
-    } else if (angleDiff < -25) {
-      instruction = "Turn left";
-      icon = 'assets/turnLeft.png';
+      if (angleDiff > 25) {
+        instruction = "Turn right";
+        icon = 'assets/turnRight.png';
+      } else if (angleDiff < -25) {
+        instruction = "Turn left";
+        icon = 'assets/turnLeft.png';
+      } else {
+        instruction = "Go straight";
+        icon = 'assets/goStraight.png';
+      }
     } else {
-      instruction = "Go straight";
+      instruction = "Start Navigation";
       icon = 'assets/goStraight.png';
     }
 
+    for (int nextSegmentIndex = segmentIndex + 1; nextSegmentIndex < route.length -1; nextSegmentIndex++) {
+      LatLng nextSegmentStart = route[nextSegmentIndex];
+      LatLng nextSegmentEnd = route[nextSegmentIndex + 1];
+      double currentBearing = getBearing(currentSegmentStart, currentSegmentEnd);
+      double nextSegmentBearing = getBearing(nextSegmentStart, nextSegmentEnd);
+      double nextAngleDiff = nextSegmentBearing - currentBearing;
+      nextAngleDiff = ((nextAngleDiff + 180) % 360) - 180;
+
+      if (nextAngleDiff > 25 || nextAngleDiff < -25) {
+        instructionPoint = nextSegmentEnd;
+        break;
+      } else {
+        instruction = "Go straight";
+        icon = 'assets/goStraight.png';
+        instructionPoint = route.last;
+      }
+    }
+
+    double distanceToInstructionPoint = Geolocator.distanceBetween(
+      currentPosition.latitude,
+      currentPosition.longitude,
+      instructionPoint.latitude,
+      instructionPoint.longitude,
+    );
+
     String distanceText = '';
-    if (distanceToNextPoint <= instructionDistanceThreshold) {
-      distanceText = '${distanceToNextPoint.toStringAsFixed(0)}m';
+    if (distanceToInstructionPoint <= instructionDistanceThreshold) {
+      distanceText = '${distanceToInstructionPoint.toStringAsFixed(0)}m';
     }
 
     return {
@@ -281,7 +298,6 @@ class NavigationController {
       'distance': distanceText,
     };
   }
-
 
   void updateTurnInstruction() {
     if (allRoutes.isNotEmpty && isNavigationActive) {

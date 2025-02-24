@@ -61,7 +61,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _initServicesAndControllers();
-    _initManagers(); // Initialize managers
+    _initManagers();
     _fetchInitialData();
   }
 
