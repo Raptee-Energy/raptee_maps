@@ -26,6 +26,9 @@ class NavigationController {
   double deviationThreshold = 30.0;
   double instructionDistanceThreshold = 100.0;
 
+  List<_CachedInstruction> cachedInstructions = [];
+  int currentInstructionIndex = 0;
+
   NavigationController({
     required this.allRoutes,
     required this.directionsService,
@@ -36,6 +39,7 @@ class NavigationController {
   void startNavigation() {
     isNavigationActive = true;
     updateNavigationRoute();
+    _generateCachedInstructions();
     startLocationUpdates();
     if (onNavigationStart != null) {
       onNavigationStart!();
@@ -46,6 +50,8 @@ class NavigationController {
     isNavigationActive = false;
     positionStreamSubscription?.cancel();
     clearNavigation();
+    cachedInstructions.clear();
+    currentInstructionIndex = 0;
     if (onNavigationStop != null) {
       onNavigationStop!();
     }
@@ -60,6 +66,8 @@ class NavigationController {
     ).listen((Position position) {
       LatLng rawPosition = LatLng(position.latitude, position.longitude);
       List<LatLng> currentRoute = allRoutes[selectedRouteIndex];
+      if (currentRoute.isEmpty) return;
+
       LatLng projectedPosition = projectOnRoute(rawPosition, currentRoute);
 
       currentPosition = projectedPosition;
@@ -70,7 +78,7 @@ class NavigationController {
             getBearing(currentPosition, currentRoute[currentSegmentIndex + 1]);
       }
       updateCurrentLocation(currentPosition, bearingToNextPoint);
-      updateCoveredRoute(currentPosition);
+      updateCoveredRoute(currentPosition, currentRoute);
 
       if (isDeviationTooFar(rawPosition)) {
         if (!_isRerouting) {
@@ -83,6 +91,8 @@ class NavigationController {
   }
 
   LatLng projectOnRoute(LatLng point, List<LatLng> route) {
+    if (route.isEmpty) return point;
+
     double minDistance = double.infinity;
     LatLng closestPoint = route[0];
     int closestSegmentIndex = 0;
@@ -112,19 +122,21 @@ class NavigationController {
     double dx = end.longitude - start.longitude;
     double dy = end.latitude - start.latitude;
     double t = ((p.longitude - start.longitude) * dx +
-        (p.latitude - start.latitude) * dy) /
+            (p.latitude - start.latitude) * dy) /
         (dx * dx + dy * dy);
     t = t.clamp(0.0, 1.0);
     return LatLng(start.latitude + t * dy, start.longitude + t * dx);
   }
 
-  void updateCoveredRoute(LatLng newPoint) {
-    List<LatLng> currentRoute = allRoutes[selectedRouteIndex];
+  void updateCoveredRoute(LatLng newPoint, List<LatLng> currentRoute) {
     if (currentRoute.isEmpty) return;
 
-    List<LatLng> coveredPart = currentRoute.sublist(
-        0, Math.min(currentSegmentIndex + 1, currentRoute.length));
-    coveredPart.add(newPoint);
+    List<LatLng> coveredPart = [];
+    if (currentRoute.isNotEmpty) {
+      coveredPart = currentRoute.sublist(
+          0, Math.min(currentSegmentIndex + 1, currentRoute.length));
+      coveredPart.add(newPoint);
+    }
     updateCoveredPolyline(coveredPart);
   }
 
@@ -151,7 +163,7 @@ class NavigationController {
     LatLng destination = allRoutes[selectedRouteIndex].last;
     try {
       final directions =
-      await directionsService.getDirections(currentPosition, destination);
+          await directionsService.getDirections(currentPosition, destination);
       if (directions.isNotEmpty) {
         allRoutes.clear();
         for (var route in directions) {
@@ -160,7 +172,9 @@ class NavigationController {
         selectedRouteIndex = 0;
         currentSegmentIndex = 0;
         updateNavigationRoute();
+        _generateCachedInstructions();
         updateTurnInstruction();
+        updateCoveredPolyline([]);
       } else {
         updateTurnInstructions(
             'Rerouting failed: No route found', 'assets/error.png', '');
@@ -193,7 +207,34 @@ class NavigationController {
     return (initialBearing + 360.0) % 360.0;
   }
 
-  Map<String, String> getTurnInstruction(List<LatLng> route, int segmentIndex) {
+  void _generateCachedInstructions() {
+    cachedInstructions.clear();
+    currentInstructionIndex = 0;
+    if (allRoutes.isEmpty) return;
+    List<LatLng> route = allRoutes[selectedRouteIndex];
+
+    for (int i = 0; i < route.length; i++) {
+      Map<String, String> instructionMap =
+          getTurnInstructionForSegment(route, i);
+      cachedInstructions.add(_CachedInstruction(
+        instruction: instructionMap['instruction']!,
+        icon: instructionMap['icon']!,
+        triggerPoint: (i < route.length - 1) ? route[i + 1] : route.last,
+        segmentIndex: i,
+      ));
+    }
+    if (route.isNotEmpty) {
+      cachedInstructions.add(_CachedInstruction(
+        instruction: 'Destination Reached',
+        icon: 'assets/destination.png',
+        triggerPoint: route.last,
+        segmentIndex: route.length - 1,
+      ));
+    }
+  }
+
+  Map<String, String> getTurnInstructionForSegment(
+      List<LatLng> route, int segmentIndex) {
     if (_isRerouting) {
       return {
         'instruction': 'Rerouting...',
@@ -203,89 +244,104 @@ class NavigationController {
     }
 
     if (segmentIndex >= route.length - 1) {
-      LatLng destination = route.last;
-      double distanceToDestination = Geolocator.distanceBetween(
-        currentPosition.latitude,
-        currentPosition.longitude,
-        destination.latitude,
-        destination.longitude,
-      );
-      if (distanceToDestination <= 20.0) {
-        return {
-          'instruction': 'Destination Reached',
-          'icon': 'assets/destination.png',
-          'distance': 'Arrived'
-        };
-      } else {
-        return {
-          'instruction': 'Continue to Destination',
-          'icon': 'assets/goStraight.png',
-          'distance': '${distanceToDestination.toStringAsFixed(0)}m'
-        };
-      }
+      return {
+        'instruction': 'Continue to Destination',
+        'icon': 'assets/goStraight.png',
+        'distance': ''
+      };
     }
 
     LatLng currentSegmentStart = route[segmentIndex];
     LatLng currentSegmentEnd = route[segmentIndex + 1];
-    double distanceToNextPoint = Geolocator.distanceBetween(
-      currentPosition.latitude,
-      currentPosition.longitude,
-      currentSegmentEnd.latitude,
-      currentSegmentEnd.longitude,
-    );
 
-    if (segmentIndex == 0) {
-      return {
-        'instruction': 'Start Navigation',
-        'icon': 'assets/goStraight.png',
-        'distance': '${distanceToNextPoint.toStringAsFixed(0)}m'
-      };
-    }
+    String instruction = "Go straight";
+    String icon = 'assets/goStraight.png';
 
-    LatLng lastSegmentStart = route[segmentIndex - 1];
-    double lastSegmentBearing = getBearing(lastSegmentStart, currentSegmentStart);
-    double currentSegmentBearing = getBearing(currentSegmentStart, currentSegmentEnd);
-    double angleDiff = currentSegmentBearing - lastSegmentBearing;
-    angleDiff = ((angleDiff + 180) % 360) - 180;
+    if (segmentIndex > 0) {
+      LatLng lastSegmentStart = route[segmentIndex - 1];
+      double lastSegmentBearing =
+          getBearing(lastSegmentStart, currentSegmentStart);
+      double currentSegmentBearing =
+          getBearing(currentSegmentStart, currentSegmentEnd);
+      double angleDiff = currentSegmentBearing - lastSegmentBearing;
+      angleDiff = ((angleDiff + 180) % 360) - 180;
 
-    String instruction;
-    String icon;
-
-    if (angleDiff > 25) {
-      instruction = "Turn right";
-      icon = 'assets/turnRight.png';
-    } else if (angleDiff < -25) {
-      instruction = "Turn left";
-      icon = 'assets/turnLeft.png';
+      if (angleDiff > 135 || angleDiff < -135) {
+        instruction = "Make U-Turn";
+        icon = 'assets/turnBack.png';
+      } else if (angleDiff > 25) {
+        instruction = "Turn right";
+        icon = 'assets/turnRight.png';
+      } else if (angleDiff < -25) {
+        instruction = "Turn left";
+        icon = 'assets/turnLeft.png';
+      } else {
+        instruction = "Go straight";
+        icon = 'assets/goStraight.png';
+      }
     } else {
-      instruction = "Go straight";
+      instruction = "Start Navigation";
       icon = 'assets/goStraight.png';
-    }
-
-    String distanceText = '';
-    if (distanceToNextPoint <= instructionDistanceThreshold) {
-      distanceText = '${distanceToNextPoint.toStringAsFixed(0)}m';
     }
 
     return {
       'instruction': instruction,
       'icon': icon,
-      'distance': distanceText,
+      'distance': '',
     };
   }
 
-
   void updateTurnInstruction() {
     if (allRoutes.isNotEmpty && isNavigationActive) {
-      List<LatLng> currentRoute = allRoutes[selectedRouteIndex];
-      if (currentSegmentIndex < currentRoute.length) {
-        Map<String, String> turnInstruction = getTurnInstruction(
-          currentRoute,
-          currentSegmentIndex,
+      if (cachedInstructions.isEmpty) return;
+
+      double closestDistance = double.infinity;
+      _CachedInstruction? nextInstruction;
+
+      while (currentInstructionIndex < cachedInstructions.length) {
+        _CachedInstruction instruction =
+            cachedInstructions[currentInstructionIndex];
+        double distanceToTrigger = Geolocator.distanceBetween(
+          currentPosition.latitude,
+          currentPosition.longitude,
+          instruction.triggerPoint.latitude,
+          instruction.triggerPoint.longitude,
         );
+
+        if (distanceToTrigger <= instructionDistanceThreshold ||
+            currentInstructionIndex == 0) {
+          nextInstruction = instruction;
+          closestDistance = distanceToTrigger;
+          currentInstructionIndex++;
+          break;
+        } else {
+          currentInstructionIndex++;
+        }
+      }
+
+      if (nextInstruction != null) {
+        String distanceText = '';
+        if (nextInstruction.instruction != 'Destination Reached') {
+          distanceText = '${closestDistance.toStringAsFixed(0)}m';
+        }
+
         updateTurnInstructions(
-            turnInstruction['instruction']!, turnInstruction['icon']!, turnInstruction['distance']!);
+            nextInstruction.instruction, nextInstruction.icon, distanceText);
       }
     }
   }
+}
+
+class _CachedInstruction {
+  String instruction;
+  String icon;
+  LatLng triggerPoint;
+  int segmentIndex;
+
+  _CachedInstruction({
+    required this.instruction,
+    required this.icon,
+    required this.triggerPoint,
+    required this.segmentIndex,
+  });
 }
