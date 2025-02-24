@@ -60,6 +60,8 @@ class NavigationController {
     ).listen((Position position) {
       LatLng rawPosition = LatLng(position.latitude, position.longitude);
       List<LatLng> currentRoute = allRoutes[selectedRouteIndex];
+      if (currentRoute.isEmpty) return;
+
       LatLng projectedPosition = projectOnRoute(rawPosition, currentRoute);
 
       currentPosition = projectedPosition;
@@ -70,7 +72,7 @@ class NavigationController {
             getBearing(currentPosition, currentRoute[currentSegmentIndex + 1]);
       }
       updateCurrentLocation(currentPosition, bearingToNextPoint);
-      updateCoveredRoute(currentPosition);
+      updateCoveredRoute(currentPosition, currentRoute); // Pass currentRoute here
 
       if (isDeviationTooFar(rawPosition)) {
         if (!_isRerouting) {
@@ -83,6 +85,8 @@ class NavigationController {
   }
 
   LatLng projectOnRoute(LatLng point, List<LatLng> route) {
+    if (route.isEmpty) return point;
+
     double minDistance = double.infinity;
     LatLng closestPoint = route[0];
     int closestSegmentIndex = 0;
@@ -118,15 +122,18 @@ class NavigationController {
     return LatLng(start.latitude + t * dy, start.longitude + t * dx);
   }
 
-  void updateCoveredRoute(LatLng newPoint) {
-    List<LatLng> currentRoute = allRoutes[selectedRouteIndex];
+  void updateCoveredRoute(LatLng newPoint, List<LatLng> currentRoute) {
     if (currentRoute.isEmpty) return;
 
-    List<LatLng> coveredPart = currentRoute.sublist(
-        0, Math.min(currentSegmentIndex + 1, currentRoute.length));
-    coveredPart.add(newPoint);
+    List<LatLng> coveredPart = [];
+    if (currentRoute.isNotEmpty) {
+      coveredPart = currentRoute.sublist(
+          0, Math.min(currentSegmentIndex + 1, currentRoute.length));
+      coveredPart.add(newPoint);
+    }
     updateCoveredPolyline(coveredPart);
   }
+
 
   bool isDeviationTooFar(LatLng rawPosition) {
     List<LatLng> currentRoute = allRoutes[selectedRouteIndex];
@@ -161,6 +168,7 @@ class NavigationController {
         currentSegmentIndex = 0;
         updateNavigationRoute();
         updateTurnInstruction();
+        updateCoveredPolyline([]);
       } else {
         updateTurnInstructions(
             'Rerouting failed: No route found', 'assets/error.png', '');

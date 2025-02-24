@@ -101,8 +101,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       ..updatePolylinePoints = _updatePolylinePoints
       ..updateCurrentLocation = _updateCurrentLocation
       ..clearNavigation = _clearNavigation
-      ..updateTurnInstructions =
-          _updateTurnInstructions // No change needed here as signature is already updated in controller
+      ..updateTurnInstructions = _updateTurnInstructions
       ..updateCoveredPolyline = _updateCoveredPolyline
       ..onNavigationStart = _onNavigationStart
       ..onNavigationStop = _onNavigationStop;
@@ -206,11 +205,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _markerManager.addGreenNavigationMarker(location);
       _mapAnimationController.updateMapCenter(location, bearing,
           animated: true);
-
-      if (_plannedRoutePoints.isNotEmpty) {
-        _plannedRoutePoints[0] = _currentLocation!;
-        _remainingRoutePoints[0] = _currentLocation!;
-      }
     });
   }
 
@@ -256,10 +250,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   void _stopNavigation() {
     _navigationController.stopNavigation();
+    setState(() {
+      _isRouteSelected = false;
+      _routeDataManager.isRouteSelected = false;
+    });
   }
 
   void _updateCoveredPolyline(List<LatLng> coveredPoints) {
-    _routeDataManager.updateCoveredPolyline(coveredPoints);
+    setState(() {
+      _coveredRoutePoints.clear();
+      _coveredRoutePoints.addAll(coveredPoints);
+    });
   }
 
   @override
@@ -277,13 +278,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             markers: _markers,
             polylines: [
               Polyline(
-                points: _remainingRoutePoints,
-                strokeWidth: 4.0,
+                strokeJoin: StrokeJoin.round,
+                points: _polylinePoints,
+                strokeWidth: 6.0,
                 color: Colors.blue.withOpacity(0.5),
               ),
               Polyline(
                 points: _coveredRoutePoints,
-                strokeWidth: 4.0,
+                strokeWidth: 6.0,
                 color: Colors.green,
               ),
             ],
