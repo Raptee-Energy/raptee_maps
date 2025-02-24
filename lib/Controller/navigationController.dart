@@ -266,7 +266,10 @@ class NavigationController {
       double angleDiff = currentSegmentBearing - lastSegmentBearing;
       angleDiff = ((angleDiff + 180) % 360) - 180;
 
-      if (angleDiff > 25) {
+      if (angleDiff > 135 || angleDiff < -135) {
+        instruction = "Make U-Turn";
+        icon = 'assets/turnBack.png';
+      } else if (angleDiff > 25) {
         instruction = "Turn right";
         icon = 'assets/turnRight.png';
       } else if (angleDiff < -25) {
