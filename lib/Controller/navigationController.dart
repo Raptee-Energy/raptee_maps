@@ -23,7 +23,7 @@ class NavigationController {
   VoidCallback? onNavigationStop;
   bool _isRerouting = false;
   double deviationThreshold = 30.0;
-  double instructionDistanceThreshold = 20.0;
+  double instructionDistanceThreshold = 10.0;
 
   List<_CachedInstruction> cachedInstructions = [];
   int currentInstructionIndex = 0;
@@ -335,18 +335,18 @@ class NavigationController {
       double angleDiff = currentSegmentBearing - lastSegmentBearing;
       angleDiff = ((angleDiff + 180) % 360) - 180;
 
-      if (angleDiff > 135 || angleDiff < -135) {
-        instruction = "Make U-Turn";
-        icon = 'assets/turnBack.png';
-      } else if (angleDiff > 35) {
-        instruction = "Turn right";
-        icon = 'assets/turnRight.png';
-      } else if (angleDiff < -35) {
-        instruction = "Turn left";
-        icon = 'assets/turnLeft.png';
-      } else {
+      if (angleDiff.abs() < 20) {
         instruction = "Go straight";
         icon = 'assets/goStraight.png';
+      } else if (angleDiff > 135 || angleDiff < -135) {
+        instruction = "Make U-Turn";
+        icon = 'assets/turnBack.png';
+      } else if (angleDiff > 45) {
+        instruction = "Turn right";
+        icon = 'assets/turnRight.png';
+      } else if (angleDiff < -45) {
+        instruction = "Turn left";
+        icon = 'assets/turnLeft.png';
       }
     } else {
       instruction = "Start Navigation";
@@ -378,6 +378,7 @@ class NavigationController {
       if (cachedInstructions.isEmpty) return;
 
       _CachedInstruction? nextInstruction;
+      bool instructionUpdated = false;
 
       while (currentInstructionIndex < cachedInstructions.length) {
         _CachedInstruction instruction =
@@ -392,14 +393,19 @@ class NavigationController {
         if (distanceToTrigger <= instructionDistanceThreshold) {
           nextInstruction = instruction;
           currentInstructionIndex++;
+          instructionUpdated = true;
+
+          if (nextInstruction.instruction == 'Destination Reached') {
+            updateTurnInstructions(
+                nextInstruction.instruction, nextInstruction.icon, '');
+            return;
+          }
         } else {
           break;
         }
-        currentInstructionIndex++;
-        break;
       }
 
-      if (nextInstruction != null) {
+      if (nextInstruction != null && instructionUpdated) {
         String distanceText = '';
         double distanceToInstruction = Geolocator.distanceBetween(
           currentPosition.latitude,
@@ -408,21 +414,18 @@ class NavigationController {
           nextInstruction.triggerPoint.longitude,
         );
         if (nextInstruction.instruction != 'Destination Reached') {
-          distanceText =
-              '${distanceToInstruction.toStringAsFixed(0)}m'; // Show distance to instruction
+          distanceText = '${distanceToInstruction.toStringAsFixed(0)}m';
         }
 
         updateTurnInstructions(
             nextInstruction.instruction, nextInstruction.icon, distanceText);
       } else {
-        // Fallback: If no instruction is triggered from cache, use "Go straight" or similar default.
         if (cachedInstructions.isNotEmpty &&
             currentInstructionIndex >= cachedInstructions.length) {
           updateTurnInstructions(
               'Destination Reached', 'assets/destination.png', '');
         } else {
-          updateTurnInstructions('Go straight', 'assets/goStraight.png',
-              ''); // Default instruction
+          updateTurnInstructions('Go straight', 'assets/goStraight.png', '');
         }
       }
     }
