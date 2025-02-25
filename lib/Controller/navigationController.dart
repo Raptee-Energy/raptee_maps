@@ -12,7 +12,7 @@ class NavigationController {
   bool isNavigationActive = false;
   StreamSubscription<Position>? positionStreamSubscription;
   late Function(List<LatLng>) updatePolylinePoints;
-  late Function(LatLng, double?) updateCurrentLocation;
+  late Function(LatLng, double?, double?) updateCurrentLocation;
   late Function(String, String, String) updateTurnInstructions;
   late Function(List<LatLng>) updateCoveredPolyline;
   late Function() clearNavigation;
@@ -90,7 +90,9 @@ class NavigationController {
         bearingToNextPoint =
             getBearing(currentPosition, currentRoute[currentSegmentIndex + 1]);
       }
-      updateCurrentLocation(currentPosition, bearingToNextPoint);
+      double? distanceToNextInstruction = _distanceToNextInstruction();
+      updateCurrentLocation(
+          currentPosition, bearingToNextPoint, distanceToNextInstruction);
       updateCoveredRoute(currentPosition, currentRoute);
 
       if (isDeviationTooFar(rawPosition)) {
@@ -105,6 +107,21 @@ class NavigationController {
       print("Error in location stream: $error");
       stopNavigation();
     });
+  }
+
+  double? _distanceToNextInstruction() {
+    if (cachedInstructions.isEmpty ||
+        currentInstructionIndex >= cachedInstructions.length) {
+      return null;
+    }
+    _CachedInstruction nextInstruction =
+        cachedInstructions[currentInstructionIndex];
+    return Geolocator.distanceBetween(
+      currentPosition.latitude,
+      currentPosition.longitude,
+      nextInstruction.triggerPoint.latitude,
+      nextInstruction.triggerPoint.longitude,
+    );
   }
 
   void _debounceReroute(LatLng rawPosition) {

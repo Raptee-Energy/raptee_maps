@@ -208,17 +208,27 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _routeDataManager.updatePolylinePoints(polylinePoints);
   }
 
-  void _updateCurrentLocation(LatLng location, double? bearing) {
+  void _updateCurrentLocation(
+      LatLng location, double? bearing, double? distanceToNextInstruction) {
+    double targetZoom = 17.0;
+
+    if (distanceToNextInstruction != null) {
+      if (distanceToNextInstruction <= 20) {
+        targetZoom = 18.0;
+      } else if (distanceToNextInstruction < 50) {
+        targetZoom = 16.0;
+      } else {
+        targetZoom = 17.0;
+      }
+    }
+
     setState(() {
       _markerManager.removeGreenMarkers();
       _currentLocation = location;
       _markerManager.addGreenNavigationMarker(location);
       _mapAnimationController.updateMapCenter(
           location, _navigationController.isNavigationActive ? bearing : null,
-          zoomLevel: _navigationController.isNavigationActive
-              ? 17.0
-              : _mapController.camera.zoom,
-          animated: true);
+          zoomLevel: targetZoom, animated: true);
     });
   }
 
