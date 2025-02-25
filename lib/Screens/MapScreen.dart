@@ -20,6 +20,7 @@ import '../Package/tappablePolyline.dart';
 import '../utils/mapConfig.dart';
 import '../utils/markerManager.dart';
 import '../utils/routeDataManager.dart';
+import 'dart:math' as Math;
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -129,6 +130,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   void _onNavigationStop() {
     _mapAnimationController.stopContinuousPan();
+    _mapAnimationController.resetRotation();
   }
 
   Future<void> _requestLocationPermission() async {
@@ -195,11 +197,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     LatLngBounds bounds = LatLngBounds(_currentLocation!, selectedLocation);
     bounds.extend(_currentLocation!);
     bounds.extend(selectedLocation);
-    LatLng center = bounds.center;
     double zoomLevel = MapConfig.getZoomLevelForDistance(distance);
 
-    _mapAnimationController.updateMapCenter(midPoint, zoomLevel,
-        animated: true);
+    _mapAnimationController.updateMapCenter(midPoint, null,
+        zoomLevel: zoomLevel, animated: true);
     await _routeDataManager.getDirections(_currentLocation!, selectedLocation);
   }
 
@@ -212,7 +213,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _markerManager.removeGreenMarkers();
       _currentLocation = location;
       _markerManager.addGreenNavigationMarker(location);
-      _mapAnimationController.updateMapCenter(location, bearing,
+      _mapAnimationController.updateMapCenter(
+          location, _navigationController.isNavigationActive ? bearing : null,
+          zoomLevel: _navigationController.isNavigationActive
+              ? 17.0
+              : _mapController.camera.zoom,
           animated: true);
     });
   }
@@ -228,8 +233,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       );
       return;
     }
-    _mapAnimationController.updateMapCenter(_currentLocation!, 0.0,
-        zoomLevel: 15.0, animated: true);
+    _mapAnimationController.updateMapCenter(
+        _currentLocation!,
+        _navigationController.isNavigationActive
+            ? _mapController.camera.rotation
+            : 0.0,
+        zoomLevel: _navigationController.isNavigationActive ? 17.0 : 15.0,
+        animated: true);
   }
 
   void _selectRoute(int index) {
@@ -257,6 +267,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _routeDataManager.isRouteSelected = true;
     });
     _navigationController.startNavigation();
+
+    if (_allRoutes[0].length > 1) {
+      double initialBearing =
+          _navigationController.getBearing(_allRoutes[0][0], _allRoutes[0][1]);
+      _mapAnimationController.updateMapRotation(initialBearing, animated: true);
+    }
+
     setState(() {
       _markerManager.removeRedMarkers();
       _markerManager.removeBlueMarkers();

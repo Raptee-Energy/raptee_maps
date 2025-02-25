@@ -37,6 +37,61 @@ class MapAnimationController {
     }
   }
 
+  void updateMapRotation(double rotation, {bool animated = true}) {
+    if (animated && !isAnimating) {
+      _animatedRotateTo(rotation);
+    } else {
+      mapController.rotate(rotation);
+    }
+  }
+
+  void _animatedRotateTo(double destRotation) {
+    if (isAnimating) return;
+
+    final startRotation = mapController.camera.rotation;
+    _targetRotation = destRotation;
+
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: tickerProvider,
+    );
+
+    _animation = CurvedAnimation(
+      parent: _animationController!,
+      curve: Curves.easeInOutQuad,
+    );
+
+    void Function() animationListener;
+
+    animationListener = () {
+      if (!isAnimating) return;
+
+      final t = _animation!.value;
+      final lerpRotation = lerpDouble(startRotation, _targetRotation, t)!;
+
+      mapController.rotate(lerpRotation);
+
+      if (t == 1.0) {
+        _animationController!.stop();
+      }
+    };
+
+    _animationController!.addListener(animationListener);
+
+    _animationController!.addStatusListener((status) {
+      if (status == AnimationStatus.completed ||
+          status == AnimationStatus.dismissed) {
+        _animationController!.removeListener(animationListener);
+        _animationController!.dispose();
+        _animationController = null;
+        _animation = null;
+        _targetRotation = null;
+      }
+    });
+
+    _animationController!.forward();
+  }
+
   void _animatedZoomTo(double destZoom) {
     if (isAnimating) return;
 
