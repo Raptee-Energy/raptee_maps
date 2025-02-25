@@ -8,7 +8,9 @@ class MapConfig {
   static const String tileLayerUrlTemplate = 'https://maps.raptee.com/styles/test-style/{z}/{x}/{y}.png';
 
   static double getZoomLevelForDistance(double distanceInKm) {
-    if (distanceInKm < 1) {
+    if (distanceInKm < 0.5) {
+      return 16;
+    } else if (distanceInKm < 1) {
       return 15;
     } else if (distanceInKm < 5) {
       return 14;
