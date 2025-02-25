@@ -47,6 +47,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   bool _isRouteSelected = false;
   int _selectedRouteIndex = 0;
   bool _isLoadingLocation = true;
+  bool _isNavigationStarting = false;
 
   late NavigationController _navigationController;
   late MapAnimationController _mapAnimationController;
@@ -116,6 +117,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   void _onNavigationStart() {
     _mapAnimationController.startContinuousPan();
+    setState(() {
+      _isNavigationStarting = true;
+    });
+    Future.delayed(const Duration(milliseconds: 500), () {
+      setState(() {
+        _isNavigationStarting = false;
+      });
+    });
   }
 
   void _onNavigationStop() {
@@ -237,6 +246,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   void _startNavigation() {
+    if (_allRoutes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No route to start navigation.')),
+      );
+      return;
+    }
     setState(() {
       _isRouteSelected = true;
       _routeDataManager.isRouteSelected = true;
@@ -281,7 +296,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 strokeJoin: StrokeJoin.round,
                 points: _polylinePoints,
                 strokeWidth: 6.0,
-                color: Colors.blue.withOpacity(0.5),
+                color: Colors.blue.withValues(alpha: 0.5),
               ),
               Polyline(
                 points: _coveredRoutePoints,
@@ -313,7 +328,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   )
                 : null,
           ),
-          if (_isLoadingLocation)
+          if (_isLoadingLocation || _isNavigationStarting)
             const Center(
               child: CircularProgressIndicator(),
             ),

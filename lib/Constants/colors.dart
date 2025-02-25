@@ -90,7 +90,5 @@ class Clr {
   static Color indicationErrorRed = const Color(0xFFFF0000);
 
   static Color backgroundGradientBlue =
-      const Color(0xFF76E6FF).withOpacity(0.5);
-
-
+      const Color(0xFF76E6FF).withValues(alpha: 0.5);
 }

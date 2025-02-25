@@ -16,7 +16,7 @@ class TurnInstructionsWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.8),
+        color: Colors.white.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(8),
       ),
       padding: const EdgeInsets.all(12.0),
@@ -41,8 +41,7 @@ class TurnInstructionsWidget extends StatelessWidget {
                 ),
                 Text(
                   turnDistance.isNotEmpty ? 'in $turnDistance' : '',
-                  style:
-                  const TextStyle(fontSize: 16.0, color: Colors.grey),
+                  style: const TextStyle(fontSize: 16.0, color: Colors.grey),
                 ),
               ],
             ),
