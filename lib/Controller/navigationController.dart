@@ -69,7 +69,6 @@ class NavigationController {
     positionStreamSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        timeLimit: Duration(milliseconds: 500),
         distanceFilter: 3,
       ),
     ).listen((Position position) {
