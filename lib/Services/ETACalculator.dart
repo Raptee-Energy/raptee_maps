@@ -1,8 +1,7 @@
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
-
-//// TODO: When Idle, the ETA Logic rebuild does not happen. Make it rebuild each minute.
+import 'dart:async';
 
 class ETACalculator {
   List<List<LatLng>>? allRoutes;
@@ -15,7 +14,16 @@ class ETACalculator {
   double lastDistanceCovered = 0;
   DateTime lastUpdateTime = DateTime.now();
 
-  ETACalculator();
+  Timer? _periodicUpdateTimer;
+  Function()? _onETAUpdated;
+
+  ETACalculator() {
+    _startPeriodicUpdates();
+  }
+
+  void setETAUpdateCallback(Function() callback) {
+    _onETAUpdated = callback;
+  }
 
   void initializeETAData(List<List<LatLng>> routes, int routeIndex,
       List<Map<String, dynamic>> routeDetails) {
@@ -35,6 +43,8 @@ class ETACalculator {
     coveredRoutePoints = [];
     lastDistanceCovered = 0;
     lastUpdateTime = DateTime.now();
+
+    _resetPeriodicUpdates();
   }
 
   void _calculateTotalRouteDistanceAndDuration() {
@@ -57,6 +67,12 @@ class ETACalculator {
 
   void updateCoveredRoute(List<LatLng> coveredPoints) {
     coveredRoutePoints = coveredPoints;
+
+    _resetPeriodicUpdates();
+
+    if (_onETAUpdated != null) {
+      _onETAUpdated!();
+    }
   }
 
   Map<String, String> getETAData() {
@@ -65,56 +81,37 @@ class ETACalculator {
         (totalDistance - distanceCovered).clamp(0, double.infinity);
     final now = DateTime.now();
     final elapsed = now.difference(startTime);
-    final elapsedMinutes = elapsed.inMinutes.toDouble();
+    elapsed.inMinutes.toDouble();
 
     double remainingDurationMinutes;
 
     if (totalDistance <= 0) {
       remainingDurationMinutes = 0;
     } else if (distanceCovered >= totalDistance) {
-      remainingDurationMinutes = 0; // Already reached, no time remaining
+      remainingDurationMinutes = 0;
     } else {
       double currentSpeed = 0;
-      double timeDiffInMinutes =
+      final timeDiffInMinutes =
           now.difference(lastUpdateTime).inMinutes.toDouble();
-      double distanceDiff = distanceCovered - lastDistanceCovered;
+      final distanceDiff = distanceCovered - lastDistanceCovered;
 
       if (timeDiffInMinutes > 0) {
-        currentSpeed = distanceDiff / timeDiffInMinutes; // km per minute
+        currentSpeed = distanceDiff / timeDiffInMinutes;
       }
 
       if (currentSpeed > 0) {
         remainingDurationMinutes = distanceRemaining / currentSpeed;
       } else {
-        // If speed is 0 or negative, recalculate based on initial total duration and remaining distance
         remainingDurationMinutes =
             (distanceRemaining / totalDistance) * initialTotalDuration;
       }
 
-      // Adjust ETA to be realistic and avoid negative or illogical values
-      if (elapsedMinutes > initialTotalDuration) {
-        remainingDurationMinutes =
-            initialTotalDuration; // Stuck for too long, reset to initial. Consider more sophisticated logic.
-      }
-    }
-
-    remainingDurationMinutes =
-        remainingDurationMinutes.clamp(0, initialTotalDuration * 2);
-
-    DateTime currentArrivalTime =
-        now.add(Duration(minutes: remainingDurationMinutes.ceil()));
-
-    // Ensure arrival time is never in the past
-    if (currentArrivalTime.isBefore(now)) {
-      currentArrivalTime = now.add(const Duration(
-          minutes: 1)); // Add a minute to be safe, or more sophisticated logic
       remainingDurationMinutes =
-          currentArrivalTime.difference(now).inMinutes.toDouble();
+          remainingDurationMinutes.clamp(0, initialTotalDuration * 2);
     }
 
-    //Correct the Math to avoid time mismatch issues:
-    remainingDurationMinutes =
-        (currentArrivalTime.difference(now).inMinutes).toDouble();
+    final DateTime currentArrivalTime =
+        now.add(Duration(minutes: remainingDurationMinutes.ceil()));
 
     lastDistanceCovered = distanceCovered;
     lastUpdateTime = now;
@@ -138,5 +135,25 @@ class ETACalculator {
       }
     }
     return coveredDistance / 1000;
+  }
+
+  void _startPeriodicUpdates() {
+    _periodicUpdateTimer?.cancel();
+
+    _periodicUpdateTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      print('***************** UPDATING ETA *****************');
+      if (_onETAUpdated != null) {
+        _onETAUpdated!();
+      }
+    });
+  }
+
+  void _resetPeriodicUpdates() {
+    _startPeriodicUpdates();
+  }
+
+  void dispose() {
+    _periodicUpdateTimer?.cancel();
+    _periodicUpdateTimer = null;
   }
 }
