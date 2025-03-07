@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../Components/ETAWidget.dart';
 import '../Components/currentLocationButton.dart';
 import '../Components/mapWidget.dart';
 import '../Components/navigationButton.dart';
@@ -59,6 +60,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   String _turnIcon = '';
   String _turnDistance = '';
 
+  String _etaArrivalTime = 'Calculating...';
+  String _etaDistanceRemaining = 'Calculating...';
+  String _etaDurationRemaining = 'Calculating...';
+
   @override
   void initState() {
     super.initState();
@@ -105,6 +110,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       ..clearNavigation = _clearNavigation
       ..updateTurnInstructions = _updateTurnInstructions
       ..updateCoveredPolyline = _updateCoveredPolyline
+      ..updateETA = _updateETA
       ..onNavigationStart = _onNavigationStart
       ..onNavigationStop = _onNavigationStop;
   }
@@ -265,6 +271,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
+  void _updateETA(Map<String, String> etaData) {
+    setState(() {
+      _etaArrivalTime = etaData['arrivalTime'] ?? 'N/A';
+      _etaDistanceRemaining = etaData['distanceRemaining'] ?? 'N/A';
+      _etaDurationRemaining = etaData['durationRemaining'] ?? 'N/A';
+    });
+  }
+
   void _startNavigation() {
     if (_allRoutes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -276,7 +290,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _isRouteSelected = true;
       _routeDataManager.isRouteSelected = true;
     });
-    _navigationController.startNavigation();
+    _navigationController.startNavigation(_routeDetails);
 
     if (_allRoutes[0].length > 1) {
       double initialBearing =
@@ -400,6 +414,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 turnDistance: _turnDistance,
               ),
             ),
+          Positioned(
+            bottom: 16.0,
+            left: 16.0,
+            right: 16.0,
+            child: ETAWidget(
+              arrivalTime: _etaArrivalTime,
+              distanceRemaining: _etaDistanceRemaining,
+              durationRemaining: _etaDurationRemaining,
+            ),
+          ),
           const Positioned(bottom: 8, left: 8, child: VersionDisplay()),
         ],
       ),

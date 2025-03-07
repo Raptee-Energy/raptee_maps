@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'dart:math' as Math;
+import '../Services/ETACalculator.dart';
 import '../Services/mapBoxDirectionService.dart';
+
+typedef ETAUpdateCallback = void Function(Map<String, String> etaData);
 
 class NavigationController {
   List<List<LatLng>> allRoutes;
@@ -16,7 +19,11 @@ class NavigationController {
   late Function(String, String, String) updateTurnInstructions;
   late Function(List<LatLng>) updateCoveredPolyline;
   late Function() clearNavigation;
+  late ETAUpdateCallback updateETA; // Add ETA update callback
+
   final MapBoxDirectionsService directionsService;
+  final ETACalculator etaCalculator =
+      ETACalculator(); // Instantiate ETACalculator
   LatLng currentPosition = const LatLng(0, 0);
   int currentSegmentIndex = 0;
   VoidCallback? onNavigationStart;
@@ -40,13 +47,15 @@ class NavigationController {
     this.onNavigationStop,
   });
 
-  void startNavigation() {
+  void startNavigation(List<Map<String, dynamic>> routeDetails) {
     if (allRoutes.isEmpty) {
       print("No routes available to start navigation.");
       return;
     }
     isNavigationActive = true;
     updateNavigationRoute();
+    etaCalculator.initializeETAData(allRoutes, selectedRouteIndex,
+        routeDetails); // Initialize ETA Data with routeDetails
     _generateCachedInstructionsInIsolate();
     startLocationUpdates();
     _lastRerouteTime = null;
@@ -202,6 +211,8 @@ class NavigationController {
       coveredPart.add(newPoint);
     }
     updateCoveredPolyline(coveredPart);
+    etaCalculator.updateCoveredRoute(
+        coveredPart);
   }
 
   bool isDeviationTooFar(LatLng rawPosition) {
@@ -236,6 +247,8 @@ class NavigationController {
         selectedRouteIndex = 0;
         currentSegmentIndex = 0;
         updateNavigationRoute();
+        etaCalculator.initializeETAData(allRoutes, selectedRouteIndex,
+            []); // Re-initialize ETA after reroute, you might need to pass updated routeDetails here as well if available from directions response. For now passing empty list.
         _generateCachedInstructionsInIsolate();
         updateTurnInstruction();
         updateCoveredPolyline([]);
@@ -398,6 +411,7 @@ class NavigationController {
           if (nextInstruction.instruction == 'Destination Reached') {
             updateTurnInstructions(
                 nextInstruction.instruction, nextInstruction.icon, '');
+            updateETA(etaCalculator.getETAData());
             return;
           }
         } else {
@@ -419,13 +433,19 @@ class NavigationController {
 
         updateTurnInstructions(
             nextInstruction.instruction, nextInstruction.icon, distanceText);
+        updateETA(etaCalculator
+            .getETAData()); // Update ETA whenever turn instruction changes
       } else {
         if (cachedInstructions.isNotEmpty &&
             currentInstructionIndex >= cachedInstructions.length) {
           updateTurnInstructions(
               'Destination Reached', 'assets/destination.png', '');
+          updateETA(
+              etaCalculator.getETAData());
         } else {
           updateTurnInstructions('Go straight', 'assets/goStraight.png', '');
+          updateETA(etaCalculator
+              .getETAData());
         }
       }
     }
