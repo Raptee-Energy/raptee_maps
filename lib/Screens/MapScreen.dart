@@ -414,16 +414,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 turnDistance: _turnDistance,
               ),
             ),
-          Positioned(
-            bottom: 16.0,
-            left: 16.0,
-            right: 16.0,
-            child: ETAWidget(
-              arrivalTime: _etaArrivalTime,
-              distanceRemaining: _etaDistanceRemaining,
-              durationRemaining: _etaDurationRemaining,
+          if (_navigationController.isNavigationActive)
+            Positioned(
+              bottom: 16.0,
+              left: 16.0,
+              right: 16.0,
+              child: ETAWidget(
+                arrivalTime: _etaArrivalTime,
+                distanceRemaining: _etaDistanceRemaining,
+                durationRemaining: _etaDurationRemaining,
+              ),
             ),
-          ),
           const Positioned(bottom: 8, left: 8, child: VersionDisplay()),
         ],
       ),
