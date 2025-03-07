@@ -2,14 +2,18 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 
+//// TODO: When Idle, the ETA Logic rebuild does not happen. Make it rebuild each minute.
+
 class ETACalculator {
   List<List<LatLng>>? allRoutes;
   int selectedRouteIndex = 0;
   List<LatLng> coveredRoutePoints = [];
   double totalDistance = 0;
-  double totalDuration = 0; // In minutes
+  double totalDuration = 0;
   DateTime startTime = DateTime.now();
-  double initialTotalDuration = 0; // Initial duration estimate in minutes
+  double initialTotalDuration = 0;
+  double lastDistanceCovered = 0;
+  DateTime lastUpdateTime = DateTime.now();
 
   ETACalculator();
 
@@ -29,6 +33,8 @@ class ETACalculator {
       initialTotalDuration = totalDuration;
     }
     coveredRoutePoints = [];
+    lastDistanceCovered = 0;
+    lastUpdateTime = DateTime.now();
   }
 
   void _calculateTotalRouteDistanceAndDuration() {
@@ -44,7 +50,7 @@ class ETACalculator {
             currentRoute[i + 1].longitude);
       }
       totalDistance /= 1000;
-      totalDuration = totalDistance * 2; // Fallback to 30 km/h average
+      totalDuration = totalDistance * 2;
       initialTotalDuration = totalDuration;
     }
   }
@@ -63,33 +69,35 @@ class ETACalculator {
 
     double remainingDurationMinutes;
 
-    if (totalDistance <= 0 || elapsedMinutes < 0) {
+    if (totalDistance <= 0) {
       remainingDurationMinutes = 0;
-    } else if (distanceCovered <= 0 || elapsedMinutes == 0) {
-      remainingDurationMinutes =
-          totalDuration * (1 - (distanceCovered / totalDistance));
+    } else if (distanceCovered >= totalDistance) {
+      remainingDurationMinutes = 0; // Already reached, no time remaining
     } else {
-      final expectedProgress = elapsedMinutes / initialTotalDuration;
-      final actualProgress = distanceCovered / totalDistance;
+      double currentSpeed = 0;
+      double timeDiffInMinutes =
+          now.difference(lastUpdateTime).inMinutes.toDouble();
+      double distanceDiff = distanceCovered - lastDistanceCovered;
 
-      double progressRate;
-      if (expectedProgress <= 0) {
-        progressRate = 1.0;
-      } else {
-        progressRate = actualProgress / expectedProgress;
+      if (timeDiffInMinutes > 0) {
+        currentSpeed = distanceDiff / timeDiffInMinutes; // km per minute
       }
 
-      if (progressRate <= 0 || !progressRate.isFinite) {
-        // Fallback to initial calculation
+      if (currentSpeed > 0) {
+        remainingDurationMinutes = distanceRemaining / currentSpeed;
+      } else {
+        // If speed is 0 or negative, recalculate based on initial total duration and remaining distance
         remainingDurationMinutes =
             (distanceRemaining / totalDistance) * initialTotalDuration;
-      } else {
+      }
+
+      // Adjust ETA to be realistic and avoid negative or illogical values
+      if (elapsedMinutes > initialTotalDuration) {
         remainingDurationMinutes =
-            (initialTotalDuration - elapsedMinutes) / progressRate;
+            initialTotalDuration; // Stuck for too long, reset to initial. Consider more sophisticated logic.
       }
     }
 
-    // Clamp values to reasonable ranges
     remainingDurationMinutes =
         remainingDurationMinutes.clamp(0, initialTotalDuration * 2);
 
@@ -98,8 +106,18 @@ class ETACalculator {
 
     // Ensure arrival time is never in the past
     if (currentArrivalTime.isBefore(now)) {
-      currentArrivalTime = now.add(const Duration(minutes: 1));
+      currentArrivalTime = now.add(const Duration(
+          minutes: 1)); // Add a minute to be safe, or more sophisticated logic
+      remainingDurationMinutes =
+          currentArrivalTime.difference(now).inMinutes.toDouble();
     }
+
+    //Correct the Math to avoid time mismatch issues:
+    remainingDurationMinutes =
+        (currentArrivalTime.difference(now).inMinutes).toDouble();
+
+    lastDistanceCovered = distanceCovered;
+    lastUpdateTime = now;
 
     return {
       'arrivalTime': DateFormat('hh:mm a').format(currentArrivalTime),

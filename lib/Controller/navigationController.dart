@@ -211,8 +211,7 @@ class NavigationController {
       coveredPart.add(newPoint);
     }
     updateCoveredPolyline(coveredPart);
-    etaCalculator.updateCoveredRoute(
-        coveredPart);
+    etaCalculator.updateCoveredRoute(coveredPart);
   }
 
   bool isDeviationTooFar(LatLng rawPosition) {
@@ -440,12 +439,10 @@ class NavigationController {
             currentInstructionIndex >= cachedInstructions.length) {
           updateTurnInstructions(
               'Destination Reached', 'assets/destination.png', '');
-          updateETA(
-              etaCalculator.getETAData());
+          updateETA(etaCalculator.getETAData());
         } else {
           updateTurnInstructions('Go straight', 'assets/goStraight.png', '');
-          updateETA(etaCalculator
-              .getETAData());
+          updateETA(etaCalculator.getETAData());
         }
       }
     }
